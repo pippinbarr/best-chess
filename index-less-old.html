@@ -1,0 +1,322 @@
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+
+  <meta charset="UTF-8" />
+
+  <title>Best Chess</title>
+
+  <link rel="stylesheet" type="text/css" href="css/chessboard-0.3.0.min.css">
+
+  <script src="js/jquery-2.1.4.js"></script>
+  <script src="js/chess.js"></script>
+  <script src="js/chessboard-0.3.0.js"></script>
+
+</head>
+
+<body>
+
+  <div id="board" style="width: 400px"></div>
+  <span id="considering"></span>
+
+  <script type="text/javascript">
+
+  var VALUE = 0;
+  var MOVE = 1;
+
+  var board;
+  var moves = 0;
+
+  var positions = [["?",0]];
+
+  var best_move = '?'; // Ha ha
+
+
+  $(document).ready(function () {
+
+    board = ChessBoard('board', 'start');
+
+    var game = new Chess();
+    var consideringEl = $('#considering');
+
+      // White makes their move first. For now just 'e4'.
+      game.move('e4');
+      board.position(game.fen());
+
+      considerNextMove();
+
+  });
+
+
+
+
+
+  var considerNextMove = function () {
+
+    // FIRST handle cases where this position is DECIDED
+    // It is DECIDED if you have examined ALL moves
+    // or if there is a WINNING MOVE for the active player
+
+    if (position_outcomes.split().pop() == game.turn() || positions.split().pop()[MOVE] >= game.moves().length)
+    {
+
+      // IF we've propagated all the way back to the initial position
+      // then the game itself has been decided.
+
+      if (positions.length == 1) {
+
+        // This is the end game condition.
+        if (positions.split().pop()[VALUE] == 'b') {
+
+          // It will be a win for black with perfect play, so make the move
+          game.move(best_move);
+          board.position(game.fen());
+
+          // Wait for white.
+          return;
+
+        }
+        else if (positions.split().pop()[VALUE] == 'd') {
+
+          // It will be a draw with perfect play, so offer one
+          console.log("How about a draw?");
+
+          // Wait for white
+          return;
+
+        }
+        else if (positions.split().pop()[VALUE] == 'w') {
+
+          // It will be a win for white with perfect play, so resign
+          console.log("I resign.");
+
+          return;
+
+        }
+      }
+      // ELSE we've exhausted all possible moves for the current position
+      // OR found a victory for the side who just moved
+      // and need to send the result back up to the previous position
+      else {
+
+        // Remember the result of the current position
+        var result = positions.pop();
+
+
+
+        // Update the current outcomes for this previous position
+
+        // There are limited possibilities to what the previous player will 'accept' as a result
+        //    If they have no value yet, they accept anything (including opposition victory)
+        //    If they have a draw or worse, they accept a draw
+        //    Victory cases
+
+        // If the prior position had no valuation or was already a loss for that player
+        // then they will take any value as a consequence
+        if (positions.split().pop()[OUTCOME] == '?' || positions.split().pop()[OUTCOME] == game.turn()) {
+          positions[positions.length - 1][OUTCOME] = result;
+        }
+        // If current result is a draw, then that will be better than whatever was already there, which could
+        // only be a draw or a loss
+        else if (result == 'd') {
+          positions[positions.length - 1][OUTCOME] = 'd';
+        }
+
+        // Undo the turn to get back to the previous position
+        game.undo();
+
+      }
+    }
+
+    if (handleActivePlayerWin()) {
+      return;
+    }
+
+    // If we get to here then there is still searching to in this
+    // board position, though there may not be moves left to check
+
+    // Get all possible moves as of now
+
+    var possible = game.moves();
+
+    // IF there is a next move to make then let's make it
+    if (next_moves.slice().pop() < possible.length) {
+
+      // Make the move
+      game.move(possible[next_moves.slice().pop()]);
+
+      // IF the move ended the game (draw, stalemate, 50 move rule, checkmate)
+      if (game.game_over() === true ||
+          game.in_draw() === true ||
+          possible.length === 0) {
+
+            handleGameEndingMove();
+      }
+      // IF the move didn't end the game, we keep going down
+      else {
+
+        next_moves.push(0);
+        position_outcomes.push('?');
+
+        setTimeOut(10,considerNextMove());
+        return;
+      }
+
+    }
+    // ELSE IF there are no remaining moves at this depth
+    else {
+
+      // IF you are back at the top of the tree
+      if (next_moves.length == 1) {
+
+        // Note that we will never get here with a win for black
+
+        // We can decide what to do!
+        if (position_outcomes.slice().pop() == 'w') {
+
+          // Resign
+          console.log("I resign.");
+
+        }
+        else if (position_outcomes.slice().pop() == 'd') {
+
+          // Offer a draw
+          console.log("I offer a draw.");
+
+        }
+
+      }
+      // IF we're not back at the top of the tree we propagate our result
+      else {
+
+        // Remember the final value of this depth
+        var value = position_outcomes.pop();
+
+        // Undo back to the previous set of moves
+        game.undo();
+        next_moves.pop();
+
+        // Integrate the value of this outcome back into this higher depth
+
+        // This is the only case:
+        // If we found a draw and the previous level had a worse result (e.g. a loss for that player)
+        // then we replace it with the draw we just found. Otherwise they already had a draw (no harm in replacing it)
+        // or it was a "?" so unknown, or it was win, but in that case we wouldn't be here
+        if (value == 'd' && position_outcomes.slice().pop() != game.turn()) position_outcomes[position_outcomes.length - 1] = 'd';
+
+        // And now we continue
+        setTimeout(10,considerNextMove());
+
+      }
+    }
+  };
+
+
+
+
+
+  var handleActivePlayerWin = function () {
+
+    // First check whether this depth already has a win for the active player (propagated up)
+    if (position_outcomes.slice().pop() == game.turn()) {
+
+      // Remember who won
+      var result = game.turn();
+
+      // IF we're evaluating the top of the tree, then the game is over
+      if (next_moves.length == 1) {
+
+        // Play the winning move
+        game.move(best_move);
+        board.position(game.fen());
+
+        // Wait for white to move
+
+      }
+      // Otherwise we need to propagate this win back up a level
+      else {
+
+        // So undo back to the (losing on this move) opponent's active move
+        game.undo(); // REMEMBER THIS UNDO IS UNDO BACK A TURN, NOT "JUST" TAKING BACK A MOVE
+
+        // Drop out this outcome (because we now want to rethink the opponent's outcomes)
+        position_outcomes.pop();
+
+        // The only case that allows this to replace the prior depth's value
+        // is if there is no value assigned yet
+        if (position_outcomes.slice().pop() == "?") position_outcomes[position_outcomes.length - 1] = result;
+
+        // Now we can just continue on at the previous depth with the opponent searching for other moves
+        // since their previous one led to them losing!
+        setTimeout(10, considerNextMove());
+      }
+
+      return true;
+
+    }
+    else {
+
+      return false;
+
+    }
+
+  };
+
+
+  var handleGameEndingMove = function () {
+
+    // IF this was a winning move
+    if (game.in_checkmate()) {
+
+      // Importantly, if we found a win, we STOP SEARCHING AT THIS DEPTH
+
+      // Set the value appropriately
+      // Note that it will always have been the 'active player' who won the game,
+      // as you can only win on your turn (and lose not on your turn)
+      position_outcomes[position_outcomes.length - 1] = (game.turn() == 'b' ? 'w' : 'b');
+
+      // Propagate up because this is a winning move!
+
+      if (next_moves.length == 1) {
+
+        // If we're at depth 0 then this was the winning move!
+        best_move = possible[next_moves.slice().pop()];
+
+      }
+      else {
+
+        // Otherwise we move this win up the chain by one
+        var result = position_outcomes.pop();
+
+        // The only reason we would update the previous level with this result is if there are
+        // no results yet
+        if (position_outcomes[position_outcomes.length - 1] == '?') position_outcomes[position_outcomes.length - 1] = result;
+
+      }
+    }
+    // IF this was a drawing move
+    else if (game.in_draw()) {
+
+      // We KEEP SEARCHING at this depth, so we don't pop next_moves or position_outcomes
+
+
+      // This will always be better than whatever was there, because
+      // if there were a win we would already have pruned this tree
+      position_outcomes[position_outcomes.length - 1] = 'd';
+
+    }
+
+    // Undo the last turn
+    game.undo();
+    considerNextMove();
+
+  };
+
+
+  </script>
+
+</body>
+
+</html>

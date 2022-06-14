@@ -1,0 +1,255 @@
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+
+  <meta charset="UTF-8" />
+
+  <title>Best Chess</title>
+
+  <link rel="stylesheet" type="text/css" href="css/chessboard-0.3.0.min.css">
+
+  <script src="js/jquery-2.1.4.js"></script> <script src="js/chess.js"></script>
+  <script src="js/chessboard-0.3.0.js"></script>
+
+</head>
+
+<body>
+
+  <div id="board" style="width: 400px"></div> <span id="considering"></span>
+
+  <script type="text/javascript">
+
+  var VALUE = 0;
+  var MOVE = 1;
+
+  var board; var game;
+
+  var positions = [["?",0]];
+
+  var best_move = '?'; // Ha ha
+
+  var MAX_GAMES = 5;
+  var games_played = 0;
+
+  $(document).ready(function () {
+
+    board = ChessBoard('board', 'start');
+
+    game = new Chess();
+
+    // White makes their move first. For now just 'e4'.
+    game.move('e4');
+
+    // Update the board
+    board.position(game.fen());
+
+    // Now begin solving chess
+    nextMove();
+  });
+
+  var nextMove = function () {
+
+    var possible = game.moves();
+    possible.sort();
+
+    // IF position is a win for the current player
+    // (i.e. they can make a move that guarantees a win from here)
+    if (positions.slice().pop()[VALUE] == game.turn()) {
+
+      // IF position is the opening position, then black wins
+      if (positions.length == 1) {
+
+        // Handle BLACK WIN
+
+        // MAKE THE BEST MOVE
+
+        // END -- WAIT FOR WHITE
+      }
+      // ELSE we need to propagate the win up
+      else {
+
+        // Remember the winner of this position
+        var winner = game.turn();
+
+        // Undo to the previous position
+        // (Which will need to be reconsidered by that player)
+        game.undo();
+        positions.pop();
+
+        // Update this position's value (only update it to accept this win if there's no other option)
+        if (positions.slice().pop()[VALUE] == '?') positions[positions.length - 1][VALUE] = winner;
+
+        nextMove();
+
+        // END
+      }
+    }
+    // ELSE IF position moves are exhausted
+    else if (positions.slice().pop()[MOVE] >= possible.length) {
+
+      // Propagate the result of the position back
+      // Note that it can only be a DRAW or a LOSS (other win),
+      // because a WIN would have been caught above already.
+
+      // Remember the current position and also take it off the stack
+      var position = positions.pop();
+
+      // If the position evaluated to a draw
+      if (position[VALUE] == 'd') {
+
+        // We always update this, because otherwise it could only have been
+        // a win, which would have been caught already
+        positions[positions.length - 1][VALUE] = position[VALUE];
+
+        // If this is the top of the tree and it evaluated to a draw
+        if (positions.length == 1) {
+
+          // Perfect play leads to DRAW
+
+          // Offer draw
+          console.log("I offer a draw.");
+
+          // END -- Wait for white
+
+          return;
+        }
+        // Otherwise we just keep going
+        else {
+
+          // Go back to the previous position
+          game.undo();
+
+          nextMove();
+          return;
+
+          // END
+        }
+      }
+      // Else if the current position evaluates to a loss for the current player
+      // (Only possible if EVERY game results in a loss)
+      else if (position[VALUE] == other(game.turn())) {
+
+        // Update the higher position
+        positions[positions.length - 1][VALUE] = position[VALUE];
+
+        // If this is the top of the tree and it evaluated to a loss for black
+        if (positions.length == 1) {
+
+          // Perfect play leads to black LOSS
+
+          // Resign
+          console.log("I resign.");
+
+          // END -- GAME OVER
+        }
+        // Otherwise we just keep going
+        else {
+
+          // Go back to the previous position
+          game.undo();
+
+          nextMove();
+          return;
+
+          // END
+        }
+      }
+    }
+    // ELSE there is a move to make
+    else {
+
+      // Make the move
+      game.move(possible[positions.slice().pop()[MOVE]]);
+
+      console.log("POSSIBLE: " + possible);
+      console.log("MOVE INDEX: " + positions.slice().pop()[MOVE])
+      console.log("POSITIONS: " + positions);
+
+      console.log((game.turn() == 'w' ? "Black: " : "White: ") + possible[positions.slice().pop()[MOVE]]);
+
+      // Increment the move counter (for next time)
+      positions[positions.length - 1][MOVE]++;
+
+      // Add the new position
+      positions.push(["?",0]);
+
+      // Check for game ending conditions
+      if (game.game_over() === true || game.in_draw() === true || game.in_stalemate() === true || possible.length === 0) {
+
+        console.log(Date.now() + " : Game ended");
+
+        // If the last move forced a checkmate
+        if (game.in_checkmate()) {
+
+          console.log("Result: Checkmate by " + (game.turn() == 'w' ? "white" : "black") + ".");
+
+          // Update this position to reflect the situation
+          positions[positions.length - 1] = [other(game.turn()),0];
+
+        }
+        // If the last move forced a draw
+        else if (game.in_draw() || game.in_stalemate()) {
+
+          console.log("Game ended on " + (game.turn() == "w" ? "white's" : "black's") + " turn.")
+
+          if (game.in_threefold_repetition()) console.log("Result: Threefold repetition.");
+          else if (game.insufficient_material()) console.log("Result: Insufficient material.");
+          else if (game.in_stalemate()) console.log("Result: Stalemate.");
+          else console.log("Result: 50 move rule.");
+
+          // Update this position to reflect the situation
+          positions[positions.length - 1] = ['d',0];
+
+        }
+        // If the last move led to stalemate
+        else if (possible.length === 0) {
+
+          console.log("Result: Stalemate. (No possible moves.)");
+
+          // Update this position to reflect the situation
+          positions[positions.length - 1] = ['d',0];
+
+        }
+
+        // Keep going (to let the opening block evaluate this position for propagation)
+        // Set a timeout to stop insanity
+
+        games_played++;
+        if (games_played > MAX_GAMES) return;
+
+        game.undo();
+
+        board.position(game.fen());
+
+        setTimeout(nextMove, 1000);
+        return;
+      }
+      // If the game didn't end with this move, then we just keep on going!
+      else {
+
+        // Just keep going
+        nextMove();
+        return;
+
+        // END
+
+      }
+    }
+
+  };
+
+
+  var other = function (player) {
+
+    if (player == 'b') return 'w';
+    if (player == 'w') return 'b';
+
+  };
+
+  </script>
+
+</body>
+
+</html>
